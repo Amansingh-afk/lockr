@@ -38,69 +38,86 @@ func Run() error {
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
-		// Check for exit commands
-		if input == "exit" || input == "quit" {
-			break
-		}
-
 		// Parse the input command
-		parts := strings.SplitN(input, " ", 3)
-		if len(parts) < 2 {
-			fmt.Println("Invalid command. Use 'set <key> <value>', 'get <key>', or 'delete <key>'.")
+		parts := strings.Fields(input)
+		if len(parts) == 0 {
+			fmt.Println("Please enter a command.")
 			continue
 		}
 
 		command := parts[0]
-		key := parts[1]
 
-		// Execute the appropriate command
+		// Handle commands based on their expected number of arguments
 		switch command {
+		case "list", "clear", "quit", "exit":
+			if len(parts) != 1 {
+				fmt.Printf("Invalid '%s' command. Use '%s' without any arguments.\n", command, command)
+				continue
+			}
+			switch command {
+			case "list":
+				entries, err := lsm.List()
+				if err != nil {
+					fmt.Printf("Error listing entries: %v\n", err)
+				} else {
+					if len(entries) == 0 {
+						fmt.Println("No entries found")
+					} else {
+						for k, v := range entries {
+							fmt.Printf("%s: %s\n", k, v)
+						}
+					}
+				}
+			case "clear":
+				// Clear the screen (implementation depends on the OS)
+				fmt.Print("\033[H\033[2J")
+			case "quit", "exit":
+				fmt.Println("Goodbye!")
+				return nil
+			}
 		case "set":
 			if len(parts) != 3 {
 				fmt.Println("Invalid 'set' command. Use 'set <key> <value>'.")
 				continue
 			}
+			key := parts[1]
 			value := parts[2]
 			if err := lsm.Set(key, value); err != nil {
 				fmt.Printf("Error setting value: %v\n", err)
 			} else {
 				fmt.Printf("Set %s to %s\n", key, value)
 			}
-		case "get":
-			value, err := lsm.Get(key)
-			if err != nil {
-				fmt.Printf("Error getting value: %v\n", err)
-			} else if value == "" {
-				fmt.Printf("Key %s not found\n", key)
-			} else {
-				fmt.Printf("%s\n", value)
+		case "get", "delete":
+			if len(parts) != 2 {
+				fmt.Printf("Invalid '%s' command. Use '%s <key>'.\n", command, command)
+				continue
 			}
-		case "delete":
-			err := lsm.Delete(key)
-			if err != nil {
-				if err.Error() == "key not found" {
+			key := parts[1]
+			switch command {
+			case "get":
+				value, err := lsm.Get(key)
+				if err != nil {
+					fmt.Printf("Error getting value: %v\n", err)
+				} else if value == "" {
 					fmt.Printf("Key %s not found\n", key)
 				} else {
-					fmt.Printf("Error deleting key: %v\n", err)
+					fmt.Printf("%s\n", value)
 				}
-			} else {
-				fmt.Printf("Deleted %s\n", key)
-			}
-		case "list":
-			entries, err := lsm.List()
-			if err != nil {
-				fmt.Printf("Error listing entries: %v\n", err)
-			} else {
-				if len(entries) == 0 {
-					fmt.Println("No entries found")
-				} else {
-					for k, v := range entries {
-						fmt.Printf("%s: %s\n", k, v)
+			case "delete":
+				err := lsm.Delete(key)
+				if err != nil {
+					if err.Error() == "key not found" {
+						fmt.Printf("Key %s not found\n", key)
+					} else {
+						fmt.Printf("Error deleting key: %v\n", err)
 					}
+				} else {
+					fmt.Printf("Deleted %s\n", key)
 				}
 			}
 		default:
-			fmt.Println("Invalid command. Use 'set <key> <value>', 'get <key>', 'delete <key>', or 'list'.")
+			fmt.Println("Invalid command. Use 'set <key> <value>', 'get <key>', 'delete <key>', 'list', 'clear', or 'quit'.")
+			continue
 		}
 	}
 
