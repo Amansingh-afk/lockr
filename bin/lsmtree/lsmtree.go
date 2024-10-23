@@ -2,6 +2,8 @@ package lsmtree
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
