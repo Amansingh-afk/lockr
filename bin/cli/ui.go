@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"golang.org/x/term"
+	"os"
 
 	"Lockr/bin/lsmtree"
 
@@ -10,12 +12,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/atotto/clipboard"
 )
 
 var (
 	titleStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#8A2BE2")).
-		Background(lipgloss.Color("#2F4F4F")).
 		Padding(0, 1)
 
 	statusMessageStyle = lipgloss.NewStyle().
@@ -63,10 +65,10 @@ func initialModel(lsm *lsmtree.LSMTree) model {
 	t := table.New(
 		table.WithColumns([]table.Column{
 			{Title: "Key", Width: 30},
-			{Title: "Value", Width: 30},
+			{Title: "Value", Width: 50},  // Increased width
 		}),
 		table.WithFocused(true),
-		table.WithHeight(5),  // Reduced default height
+		table.WithHeight(5),
 	)
 
 	s := table.DefaultStyles()
@@ -116,14 +118,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+		case tea.KeyShiftLeft, tea.KeyShiftRight:
+			if m.showTable {
+				return m, m.copySelectedRow()
+			}
 		}
 	case tea.WindowSizeMsg:
-		// Adjust the table height based on the window size, but keep it small
-		newHeight := msg.Height / 4 // Use 1/4 of the window height
+		newHeight := msg.Height / 4
 		if newHeight < 3 {
-			newHeight = 3 // Minimum height of 3 rows
+			newHeight = 3
 		} else if newHeight > 10 {
-			newHeight = 10 // Maximum height of 10 rows
+			newHeight = 10
 		}
 		m.table.SetHeight(newHeight)
 	}
@@ -152,7 +157,20 @@ func (m model) View() string {
 	}
 
 	if m.showTable {
+		width, _, _ := term.GetSize(int(os.Stdout.Fd()))
+		
+		tableWidth := width - 4
+		keyWidth := tableWidth / 3
+		valueWidth := tableWidth - keyWidth - 3
+		
+		m.table.SetColumns([]table.Column{
+			{Title: "Key", Width: keyWidth},
+			{Title: "Value", Width: valueWidth},
+		})
+		
 		b.WriteString(tableStyle.Render(m.table.View()))
+		b.WriteString("\n")
+		b.WriteString(statusMessageStyle.Render("Use arrow keys to navigate. Press Shift to copy selected row."))
 	}
 
 	return b.String()
@@ -218,6 +236,13 @@ func (m *model) executeCommand(input string) {
 		}
 		rows := []table.Row{}
 		for k, v := range entries {
+			// Truncate long values and add ellipsis
+			if len(k) > 27 {
+				k = k[:27] + "..."
+			}
+			if len(v) > 47 {
+				v = v[:47] + "..."
+			}
 			rows = append(rows, table.Row{k, v})
 		}
 		m.table.SetRows(rows)
@@ -246,4 +271,25 @@ func RunUI(lsm *lsmtree.LSMTree) error {
 	p := tea.NewProgram(initialModel(lsm), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
+}
+
+func (m model) copySelectedRow() tea.Cmd {
+	if len(m.table.Rows()) == 0 {
+		return nil
+	}
+
+	selectedRow := m.table.SelectedRow()
+	if len(selectedRow) < 2 {
+		return nil
+	}
+
+	content := fmt.Sprintf("%s: %s", selectedRow[0], selectedRow[1])
+	err := clipboard.WriteAll(content)
+	if err != nil {
+		m.errorMessage = fmt.Sprintf("Failed to copy: %v", err)
+	} else {
+		m.statusMessage = "Copied selected key-value pair to clipboard"
+	}
+
+	return nil
 }

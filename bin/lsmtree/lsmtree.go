@@ -95,19 +95,22 @@ func (l *LSMTree) Delete(key string) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	// First, check if the key exists
-	value, err := l.Get(key)
-	if err != nil {
-		return fmt.Errorf("failed to check key existence: %w", err)
-	}
-	if value == "" {
-		return fmt.Errorf("key not found")
+	// Log the deletion operation to the WAL
+	if err := l.wal.Log(key, ""); err != nil {
+		return fmt.Errorf("failed to log deletion to WAL: %w", err)
 	}
 
-	// If the key exists, mark it as deleted by setting an empty value
-	err = l.Set(key, "")
-	if err != nil {
-		return fmt.Errorf("failed to mark key as deleted: %w", err)
+	// Mark the key as deleted in the MemTable
+	l.memTable.Set(key, "")
+
+	// Update the cache
+	l.cache.Set(key, "")
+
+	// If the MemTable size exceeds the threshold, flush it to disk
+	if l.memTable.Size() >= memTableSizeThreshold {
+		if err := l.flushMemTable(); err != nil {
+			return fmt.Errorf("failed to flush memtable: %w", err)
+		}
 	}
 
 	return nil
