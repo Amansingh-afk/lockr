@@ -1,6 +1,7 @@
 # Lockr
 
 Lockr is a simple key-value store implemented using a Log-Structured Merge (LSM) tree in Go.
+![alt text](image.png)
 
 ## Features
 
